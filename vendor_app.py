@@ -4,7 +4,7 @@ from io import BytesIO
 
 # Page config
 st.set_page_config(page_title="Vendor Submission - OTM Validator", layout="wide")
-st.title("📦 Vendor Submission Portal – OTM Validator")
+st.title("📦 Vendor Submission Portal – OTM Validator tool")
 
 # Unit dropdown options
 weight_units = ["KG", "LB", "GM"]
