@@ -1,88 +1,110 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import datetime
 
-st.set_page_config(page_title="Vendor Submission Tool", layout="wide")
-st.title("📦 OTM Vendor Submission Tool")
+# Page config
+st.set_page_config(page_title="Vendor Submission - OTM Validator", layout="wide")
+st.title("📦 Vendor Submission Portal – OTM Validator")
 
-# --- Manual Entry ---
-st.subheader("➕ Enter Material Details (Manual Option)")
+# Unit dropdown options
+weight_units = ["KG", "LB", "GM"]
+dimension_units = ["CM", "MM", "IN"]
 
-material_numbers = st.text_input("Material Numbers (separated by comma)", help="Enter multiple material numbers separated by commas")
-material_description = st.text_input("Material Description (applies to all if same)")
-uom = st.selectbox("UL Base Unit of Measure", options=["EA", "PC", "KG", "LB", "G", "GAL", "L", "FT3", "M3", "IN3"])
-packing_unit = st.selectbox("Packing Unit", options=["EA", "PC", "KG", "LB", "G", "GAL", "L", "FT3", "M3", "IN3"])
-bun_per_pu = st.number_input("BUN per Packing Unit", min_value=0.0)
-gross_weight = st.number_input("Gross Weight", min_value=0.0)
-net_weight = st.number_input("Net Weight", min_value=0.0)
-weight_unit = st.selectbox("Weight Unit", options=["KG", "LB", "G"])
-length = st.number_input("Length (In)", min_value=0.0)
-width = st.number_input("Width (In)", min_value=0.0)
-height = st.number_input("Height (In)", min_value=0.0)
-volume = length * width * height
-volume_unit = "IN3"
-pallet_units = st.number_input("Packing Units per Pallet", min_value=0)
-pallet_unit = "Pallet"
+# Storage for entered materials
+if "material_data" not in st.session_state:
+    st.session_state["material_data"] = []
 
-manual_data = []
+# Manual entry form
+with st.expander("➕ Manual Entry (One Material at a Time)"):
+    with st.form("manual_entry_form"):
+        col1, col2, col3 = st.columns(3)
+        material_number = col1.text_input("Material Number")
+        description = col2.text_input("Material Description")
+        base_uom = col3.selectbox("Base Unit of Measure", weight_units)
 
-if material_numbers:
-    materials = [m.strip() for m in material_numbers.split(",")]
-    for m in materials:
-        manual_data.append({
-            "Material #": m,
-            "Material Description": material_description,
-            "UL Base Unit of Measure": uom,
-            "Packing Unit": packing_unit,
-            "BUN/Packing Unit (Unit)": bun_per_pu,
-            "Gross Weight": gross_weight,
-            "Net Weight": net_weight,
-            "Weight Unit": weight_unit,
-            "Length (In)": length,
-            "Wide (In)": width,
-            "Height (In)": height,
-            "Volume OR populate (L-W-H)": volume,
-            "Volume Unit": volume_unit,
-            "Packing Units per Pallet": pallet_units,
-            "Packing Units per Pallet (UOM)": pallet_unit,
-            "CHECK": ""
-        })
+        col4, col5, col6 = st.columns(3)
+        net_weight = col4.number_input("Net Weight", min_value=0.0, step=0.01)
+        gross_weight = col5.number_input("Gross Weight", min_value=0.0, step=0.01)
+        weight_unit = col6.selectbox("Weight Unit", weight_units)
 
-# --- File Upload ---
-st.subheader("📤 Or Upload Material List File (Excel or CSV)")
+        col7, col8, col9 = st.columns(3)
+        length = col7.number_input("Length", min_value=0.0, step=0.1)
+        width = col8.number_input("Width", min_value=0.0, step=0.1)
+        height = col9.number_input("Height", min_value=0.0, step=0.1)
 
-uploaded_file = st.file_uploader("Upload XLSX or CSV", type=["xlsx", "csv"])
+        dimension_unit = st.selectbox("Dimension Unit", dimension_units)
 
-file_data = []
-if uploaded_file:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file, engine="openpyxl")
+        submit = st.form_submit_button("Add Material")
 
-        file_data = df.to_dict(orient="records")
-        st.success("File uploaded and parsed successfully.")
-    except Exception as e:
-        st.error(f"❌ Error processing file: {e}")
+        if submit:
+            # Check required fields
+            if not material_number or not description:
+                st.warning("Material number and description are required.")
+            elif net_weight > gross_weight:
+                st.warning("Net weight cannot be greater than gross weight.")
+            else:
+                volume = length * width * height
+                st.session_state["material_data"].append({
+                    "Material Number": material_number,
+                    "Description": description,
+                    "Base UoM": base_uom,
+                    "Net Weight": net_weight,
+                    "Gross Weight": gross_weight,
+                    "Weight Unit": weight_unit,
+                    "Length": length,
+                    "Width": width,
+                    "Height": height,
+                    "Dimension Unit": dimension_unit,
+                    "Volume": volume
+                })
+                st.success("Material added!")
 
-# --- Combine + Export ---
-final_data = manual_data + file_data
-if final_data:
-    df_final = pd.DataFrame(final_data)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"Vendor_Submission_{timestamp}.xlsx"
+# Display current material list
+if st.session_state["material_data"]:
+    st.subheader("📋 Materials Entered")
+    df = pd.DataFrame(st.session_state["material_data"])
+    st.dataframe(df)
 
-    def to_excel(dataframe):
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            dataframe.to_excel(writer, index=False, sheet_name="OTM Submission")
-        return buffer.getvalue()
+    def convert_df(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Vendor_Data')
+        return output.getvalue()
 
     st.download_button(
-        label="📥 Download Purple Form Format",
-        data=to_excel(df_final),
-        file_name=filename,
+        label="📥 Download Submission File",
+        data=convert_df(df),
+        file_name="Vendor_OTM_Submission.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# Bulk upload section
+with st.expander("📤 Bulk Upload via Excel/CSV"):
+    uploaded_file = st.file_uploader("Upload Excel or CSV", type=["csv", "xlsx"])
+
+    if uploaded_file:
+        try:
+            if uploaded_file.name.endswith(".csv"):
+                bulk_df = pd.read_csv(uploaded_file)
+            else:
+                bulk_df = pd.read_excel(uploaded_file)
+
+            # Expected columns
+            required_cols = ["Material Number", "Description", "Base UoM",
+                             "Net Weight", "Gross Weight", "Weight Unit",
+                             "Length", "Width", "Height", "Dimension Unit"]
+
+            if not all(col in bulk_df.columns for col in required_cols):
+                st.error("Missing columns in file. Please check the template.")
+            else:
+                bulk_df["Volume"] = bulk_df["Length"] * bulk_df["Width"] * bulk_df["Height"]
+                st.dataframe(bulk_df)
+
+                st.download_button(
+                    label="📥 Download Converted Bulk File",
+                    data=convert_df(bulk_df),
+                    file_name="OTM_Bulk_Submission.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        except Exception as e:
+            st.error(f"Error: {e}")
